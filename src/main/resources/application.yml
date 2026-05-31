@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: extrato-bff
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8080
+
+feign:
+  okhttp:
+    enabled: true
+  client:
+    config:
+      default:
+        connectTimeout: 3000
+        readTimeout: 5000
+        loggerLevel: FULL
+
+upstream:
+  recentes:
+    url: ${UPSTREAM_RECENTES_URL:http://localhost:9001}
+  futuros:
+    url: ${UPSTREAM_FUTUROS_URL:http://localhost:9002}
+
+logbook:
+  obfuscate:
+    headers:
+      - Authorization
+      - X-Api-Key
+  format:
+    style: json

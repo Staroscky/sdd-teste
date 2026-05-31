@@ -1,50 +1,93 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+SYNC IMPACT REPORT
+==================
+Version change: (unversioned template) → 1.0.0
+Principles added:
+  - I. Reactive, Non-Blocking Architecture (new)
+  - II. Contract-First Design (new)
+  - III. Test Discipline (new)
+  - IV. Structured Error Handling (new)
+  - V. Observability (new)
+Sections added:
+  - Code Patterns (from user input §6)
+  - Decisions Requiring Explicit Approval (from user input §7)
+Sections removed: none
+Templates reviewed:
+  ✅ .specify/templates/plan-template.md — Constitution Check gate is generic; no update required
+  ✅ .specify/templates/spec-template.md — scope/requirements sections align; no update required
+  ✅ .specify/templates/tasks-template.md — task categories align; no update required
+  ✅ .specify/templates/commands/ — no command files found; skipped
+Follow-up TODOs:
+  - None. All placeholders resolved.
+-->
+
+# extrato-bff Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Reactive, Non-Blocking Architecture
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+All request handling MUST be non-blocking. Endpoints MUST be implemented using
+Project Reactor (`Mono`/`Flux`). No blocking I/O is permitted on the request
+thread. External calls MUST be made through reactive HTTP clients.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+Rationale: the BFF is the aggregation point for multiple upstream calls; blocking
+one thread degrades throughput for all concurrent requests under load.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. Contract-First Design
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+The BFF response contract (field names, structure, types) MUST be defined and
+approved before implementation begins. No field may be added, renamed, or removed
+without explicit approval. Downstream consumers are the authority on stability.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Rationale: breaking contract changes silently introduce integration regressions
+in consumers that depend on a stable BFF interface.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Test Discipline
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Every service-layer behaviour MUST have a unit test. Every route exposed to
+consumers MUST have an integration test exercising the full request path. No
+coverage exceptions for the core aggregation logic. Tests MUST be written before
+or alongside implementation — not after.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### IV. Structured Error Handling
+
+Errors returned to consumers MUST conform to the project error envelope (HTTP
+status code, application error code, human-readable message). Raw stack traces
+MUST NOT appear in response bodies. Upstream failures MUST be mapped to
+BFF-defined error codes before propagation.
+
+### V. Observability
+
+Every inbound request MUST emit structured log entries at entry and exit,
+including HTTP status, latency, and outcome. A `correlationId` MUST be
+propagated and included in all logs for the lifetime of the request.
+
+## Code Patterns
+
+Nomenclature MUST use English for all classes, methods, and variables.
+Request/response DTOs MUST be Java records (immutable by construction). No
+domain field may be `public` — all access MUST go through a getter or record
+accessor. No conditional logic is permitted in constructors or field
+initializers.
+
+## Decisions Requiring Explicit Approval
+
+The following changes MUST NOT be made without explicit team approval documented
+before implementation:
+
+- Adding any new dependency to `pom.xml`.
+- Altering the BFF response contract (fields, structure, names).
+- Introducing cache or shared state between requests.
+- Any blocking synchronous call outside the request thread.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other practices and informal conventions.
+Amendments MUST include a rationale, receive team review, and be propagated to
+all dependent templates and documentation before taking effect. All PRs MUST
+verify compliance with every applicable principle. Version bumps follow semantic
+versioning: MAJOR for principle removal/redefinition, MINOR for additions,
+PATCH for clarifications.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-05-31 | **Last Amended**: 2026-05-31
