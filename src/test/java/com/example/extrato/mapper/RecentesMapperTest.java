@@ -3,6 +3,7 @@ package com.example.extrato.mapper;
 import com.example.extrato.dto.response.LancamentoResponse;
 import com.example.extrato.dto.upstream.CategoriaUpstream;
 import com.example.extrato.dto.upstream.LancamentoRecenteUpstream;
+import com.example.extrato.util.CurrencyFormatter;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -12,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RecentesMapperTest {
 
-    private final RecentesMapper mapper = new RecentesMapper();
+    private final RecentesMapper mapper = new RecentesMapper(new CurrencyFormatter());
 
     @Test
     void deveMapearLancamentoRecenteParaResponse() {

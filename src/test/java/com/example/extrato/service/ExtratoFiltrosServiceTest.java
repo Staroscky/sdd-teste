@@ -16,6 +16,7 @@ import com.example.extrato.exception.UpstreamException;
 import com.example.extrato.mapper.FiltrosMapper;
 import com.example.extrato.mapper.FuturosMapper;
 import com.example.extrato.mapper.RecentesMapper;
+import com.example.extrato.util.CurrencyFormatter;
 import feign.FeignException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,9 +56,11 @@ class ExtratoFiltrosServiceTest {
 
     @BeforeEach
     void setUp() {
+        CurrencyFormatter currencyFormatter = new CurrencyFormatter();
         service = new ExtratoFiltrosService(
                 recentesClient, futurosClient,
-                new RecentesMapper(), new FuturosMapper(), new FiltrosMapper());
+                new RecentesMapper(currencyFormatter), new FuturosMapper(currencyFormatter),
+                new FiltrosMapper(), currencyFormatter);
     }
 
     private ExtratoFiltrosRequest request(Aba aba) {

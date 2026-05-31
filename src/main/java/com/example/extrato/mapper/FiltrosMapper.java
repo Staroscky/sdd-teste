@@ -27,12 +27,7 @@ public class FiltrosMapper {
         List<OpcaoFiltroResponse> opcoes = Arrays.stream(Periodo.values())
                 .map(p -> new OpcaoFiltroResponse(p.id, tituloPeriodo(p), p == selecionado, metadadosPeriodo(p)))
                 .toList();
-        String titulo = opcoes.stream()
-                .filter(OpcaoFiltroResponse::selecionado)
-                .map(OpcaoFiltroResponse::titulo)
-                .findFirst()
-                .orElse(placeholder);
-        return new FiltroResponse("periodo", titulo, placeholder, opcoes);
+        return new FiltroResponse("periodo", resolverTituloSelecionado(opcoes, placeholder), placeholder, opcoes);
     }
 
     private FiltroResponse buildFiltroEntradaSaida(EntradaSaida selecionado) {
@@ -40,12 +35,15 @@ public class FiltrosMapper {
         List<OpcaoFiltroResponse> opcoes = Arrays.stream(EntradaSaida.values())
                 .map(es -> new OpcaoFiltroResponse(es.name(), tituloEntradaSaida(es), es == selecionado, null))
                 .toList();
-        String titulo = opcoes.stream()
+        return new FiltroResponse("entradas_saidas", resolverTituloSelecionado(opcoes, placeholder), placeholder, opcoes);
+    }
+
+    private String resolverTituloSelecionado(List<OpcaoFiltroResponse> opcoes, String placeholder) {
+        return opcoes.stream()
                 .filter(OpcaoFiltroResponse::selecionado)
                 .map(OpcaoFiltroResponse::titulo)
                 .findFirst()
                 .orElse(placeholder);
-        return new FiltroResponse("entradas_saidas", titulo, placeholder, opcoes);
     }
 
     private String tituloPeriodo(Periodo periodo) {
