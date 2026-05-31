@@ -1,0 +1,20 @@
+{
+  "mappings": [
+    {
+      "name": "Futuros — erro 500 para periodo=60_DIAS",
+      "priority": 1,
+      "request": {
+        "method": "GET",
+        "urlPath": "/futuros",
+        "queryParameters": {
+          "periodo": { "equalTo": "60_DIAS" }
+        }
+      },
+      "response": {
+        "status": 500,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": { "error": "Internal Server Error" }
+      }
+    }
+  ]
+}

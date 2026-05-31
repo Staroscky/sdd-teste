@@ -1,0 +1,59 @@
+{
+  "mappings": [
+    {
+      "name": "Futuros — resposta padrão (página 1, qualquer filtro)",
+      "priority": 10,
+      "request": {
+        "method": "GET",
+        "urlPath": "/futuros"
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "data": {
+            "lancamentos_futuros": [
+              {
+                "tipo": "lancamentos",
+                "acao": "saida",
+                "impacto": "Aluguel",
+                "valor": 1800.00,
+                "lancamento": "D",
+                "categoria": { "id": "cat-08", "nome": "Moradia" }
+              },
+              {
+                "tipo": "lancamentos",
+                "acao": "entrada",
+                "impacto": "Freelance Design",
+                "valor": 1500.00,
+                "lancamento": "C",
+                "categoria": { "id": "cat-09", "nome": "Renda Extra" }
+              },
+              {
+                "tipo": "lancamentos",
+                "acao": "saida",
+                "impacto": "Plano de saude",
+                "valor": 420.00,
+                "lancamento": "D",
+                "categoria": { "id": "cat-10", "nome": "Saude" }
+              },
+              {
+                "tipo": "lancamentos",
+                "acao": "saida",
+                "impacto": "Financiamento auto",
+                "valor": 950.00,
+                "lancamento": "D",
+                "categoria": { "id": "cat-11", "nome": "Transporte" }
+              }
+            ],
+            "paginacao": {
+              "pagina": 1,
+              "totalPaginas": 2,
+              "totalRegistros": 12
+            }
+          }
+        }
+      }
+    }
+  ]
+}

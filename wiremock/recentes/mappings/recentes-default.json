@@ -1,0 +1,65 @@
+{
+  "mappings": [
+    {
+      "name": "Recentes — resposta padrão (página 1, qualquer filtro)",
+      "priority": 10,
+      "request": {
+        "method": "GET",
+        "urlPath": "/recentes"
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "data": [
+            {
+              "tipo": "lancamentos",
+              "acao": "saida",
+              "impacto": "Mercado Livre",
+              "valor": 250.00,
+              "lancamento": "D",
+              "categoria": { "id": "cat-01", "nome": "Compras" }
+            },
+            {
+              "tipo": "lancamentos",
+              "acao": "entrada",
+              "impacto": "Salario Empresa XYZ",
+              "valor": 5000.00,
+              "lancamento": "C",
+              "categoria": { "id": "cat-02", "nome": "Salario" }
+            },
+            {
+              "tipo": "lancamentos",
+              "acao": "saida",
+              "impacto": "Netflix",
+              "valor": 39.90,
+              "lancamento": "D",
+              "categoria": { "id": "cat-03", "nome": "Streaming" }
+            },
+            {
+              "tipo": "lancamentos",
+              "acao": "saida",
+              "impacto": "Supermercado Extra",
+              "valor": 312.45,
+              "lancamento": "D",
+              "categoria": { "id": "cat-04", "nome": "Supermercado" }
+            },
+            {
+              "tipo": "lancamentos",
+              "acao": "entrada",
+              "impacto": "Transferencia recebida",
+              "valor": 800.00,
+              "lancamento": "C",
+              "categoria": { "id": "cat-05", "nome": "Transferencia" }
+            }
+          ],
+          "paginacao": {
+            "pagina": 1,
+            "totalPaginas": 3,
+            "totalRegistros": 25
+          }
+        }
+      }
+    }
+  ]
+}

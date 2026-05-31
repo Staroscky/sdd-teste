@@ -1,0 +1,19 @@
+services:
+
+  wiremock-recentes:
+    image: wiremock/wiremock:3.9.0
+    container_name: extrato-wiremock-recentes
+    ports:
+      - "9001:8080"
+    volumes:
+      - ./wiremock/recentes:/home/wiremock
+    command: --verbose --global-response-templating
+
+  wiremock-futuros:
+    image: wiremock/wiremock:3.9.0
+    container_name: extrato-wiremock-futuros
+    ports:
+      - "9002:8080"
+    volumes:
+      - ./wiremock/futuros:/home/wiremock
+    command: --verbose --global-response-templating

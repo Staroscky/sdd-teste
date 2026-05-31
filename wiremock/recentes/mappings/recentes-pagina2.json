@@ -1,0 +1,44 @@
+{
+  "mappings": [
+    {
+      "name": "Recentes — página 2",
+      "priority": 2,
+      "request": {
+        "method": "GET",
+        "urlPath": "/recentes",
+        "queryParameters": {
+          "pagina": { "equalTo": "2" }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "data": [
+            {
+              "tipo": "lancamentos",
+              "acao": "saida",
+              "impacto": "iFood",
+              "valor": 87.50,
+              "lancamento": "D",
+              "categoria": { "id": "cat-06", "nome": "Alimentacao" }
+            },
+            {
+              "tipo": "lancamentos",
+              "acao": "saida",
+              "impacto": "Uber",
+              "valor": 34.20,
+              "lancamento": "D",
+              "categoria": { "id": "cat-07", "nome": "Transporte" }
+            }
+          ],
+          "paginacao": {
+            "pagina": 2,
+            "totalPaginas": 3,
+            "totalRegistros": 25
+          }
+        }
+      }
+    }
+  ]
+}

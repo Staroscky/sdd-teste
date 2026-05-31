@@ -1,0 +1,38 @@
+{
+  "mappings": [
+    {
+      "name": "Futuros — página 2",
+      "priority": 2,
+      "request": {
+        "method": "GET",
+        "urlPath": "/futuros",
+        "queryParameters": {
+          "pagina": { "equalTo": "2" }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "data": {
+            "lancamentos_futuros": [
+              {
+                "tipo": "lancamentos",
+                "acao": "saida",
+                "impacto": "IPTU parcela 8",
+                "valor": 210.00,
+                "lancamento": "D",
+                "categoria": { "id": "cat-12", "nome": "Impostos" }
+              }
+            ],
+            "paginacao": {
+              "pagina": 2,
+              "totalPaginas": 2,
+              "totalRegistros": 12
+            }
+          }
+        }
+      }
+    }
+  ]
+}
