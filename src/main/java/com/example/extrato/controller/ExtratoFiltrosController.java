@@ -36,9 +36,6 @@ public class ExtratoFiltrosController {
             @RequestParam(required = false) Aba aba,
             @RequestParam(defaultValue = "1") int pagina
     ) {
-        if (pagina < 1) {
-            throw new IllegalArgumentException("O parametro pagina deve ser >= 1.");
-        }
         var request = new ExtratoFiltrosRequest(
                 Periodo.fromId(periodo), dataInicial, dataFinal, entradaSaida, lancamento, aba, pagina
         );

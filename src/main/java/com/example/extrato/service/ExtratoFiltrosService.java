@@ -19,13 +19,12 @@ import com.example.extrato.exception.UpstreamException;
 import com.example.extrato.mapper.FiltrosMapper;
 import com.example.extrato.mapper.FuturosMapper;
 import com.example.extrato.mapper.RecentesMapper;
+import com.example.extrato.util.CurrencyFormatter;
 import feign.FeignException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.text.NumberFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -34,23 +33,26 @@ import java.util.concurrent.Executors;
 @Service
 public class ExtratoFiltrosService {
 
-    private static final Locale PT_BR = new Locale("pt", "BR");
     private static final int TAMANHO_PAGINA = 10;
+    private static final String ABA_RECENTES = Aba.RECENTES.name();
+    private static final String ABA_FUTUROS = Aba.FUTUROS.name();
 
     private final RecentesClient recentesClient;
     private final FuturosClient futurosClient;
     private final RecentesMapper recentesMapper;
     private final FuturosMapper futurosMapper;
     private final FiltrosMapper filtrosMapper;
+    private final CurrencyFormatter currencyFormatter;
 
     public ExtratoFiltrosService(RecentesClient recentesClient, FuturosClient futurosClient,
                                   RecentesMapper recentesMapper, FuturosMapper futurosMapper,
-                                  FiltrosMapper filtrosMapper) {
+                                  FiltrosMapper filtrosMapper, CurrencyFormatter currencyFormatter) {
         this.recentesClient = recentesClient;
         this.futurosClient = futurosClient;
         this.recentesMapper = recentesMapper;
         this.futurosMapper = futurosMapper;
         this.filtrosMapper = filtrosMapper;
+        this.currencyFormatter = currencyFormatter;
     }
 
     public ExtratoFiltrosResponse buscar(ExtratoFiltrosRequest request) {
@@ -65,18 +67,15 @@ public class ExtratoFiltrosService {
 
     private ExtratoFiltrosResponse buscarAmbasAbas(ExtratoFiltrosRequest request,
                                                     List<FiltroResponse> filtros) {
-        String periodo = request.periodo().id;
-        String entradaSaida = request.entradaSaida().name();
-        String lancamento = request.lancamento().name();
-        int pagina = request.pagina();
+        UpstreamParams params = UpstreamParams.from(request);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var recentesFuture = CompletableFuture.supplyAsync(
-                    () -> recentesClient.buscar(periodo, entradaSaida, lancamento, pagina, TAMANHO_PAGINA),
-                    executor);
+                    () -> recentesClient.buscar(params.periodo(), params.entradaSaida(),
+                            params.lancamento(), params.pagina(), TAMANHO_PAGINA), executor);
             var futurosFuture = CompletableFuture.supplyAsync(
-                    () -> futurosClient.buscar(periodo, entradaSaida, lancamento, pagina, TAMANHO_PAGINA),
-                    executor);
+                    () -> futurosClient.buscar(params.periodo(), params.entradaSaida(),
+                            params.lancamento(), params.pagina(), TAMANHO_PAGINA), executor);
 
             try {
                 CompletableFuture.allOf(recentesFuture, futurosFuture).join();
@@ -93,35 +92,34 @@ public class ExtratoFiltrosService {
                     buildPaginacao(futuros.data() != null ? futuros.data().paginacao() : null));
 
             ExtratoFiltrosData data = new ExtratoFiltrosData(
-                    List.of("RECENTES", "FUTUROS"),
-                    Map.of("RECENTES", abaRecentes, "FUTUROS", abaFuturos));
+                    List.of(ABA_RECENTES, ABA_FUTUROS),
+                    Map.of(ABA_RECENTES, abaRecentes, ABA_FUTUROS, abaFuturos));
             return new ExtratoFiltrosResponse(data, null);
         }
     }
 
     private ExtratoFiltrosResponse buscarAbaEspecifica(ExtratoFiltrosRequest request,
                                                         List<FiltroResponse> filtros) {
-        String periodo = request.periodo().id;
-        String entradaSaida = request.entradaSaida().name();
-        String lancamento = request.lancamento().name();
-        int pagina = request.pagina();
+        UpstreamParams params = UpstreamParams.from(request);
 
         try {
             if (request.aba() == Aba.RECENTES) {
                 RecentesUpstreamResponse recentes =
-                        recentesClient.buscar(periodo, entradaSaida, lancamento, pagina, TAMANHO_PAGINA);
+                        recentesClient.buscar(params.periodo(), params.entradaSaida(),
+                                params.lancamento(), params.pagina(), TAMANHO_PAGINA);
                 AbaResponse aba = buildAbaRecentes(filtros, recentes, null);
                 PaginacaoResponse paginacao = buildPaginacao(recentes.paginacao());
                 return new ExtratoFiltrosResponse(
-                        new ExtratoFiltrosData(List.of("RECENTES"), Map.of("RECENTES", aba)),
+                        new ExtratoFiltrosData(List.of(ABA_RECENTES), Map.of(ABA_RECENTES, aba)),
                         paginacao);
             } else {
                 FuturosUpstreamResponse futuros =
-                        futurosClient.buscar(periodo, entradaSaida, lancamento, pagina, TAMANHO_PAGINA);
+                        futurosClient.buscar(params.periodo(), params.entradaSaida(),
+                                params.lancamento(), params.pagina(), TAMANHO_PAGINA);
                 AbaResponse aba = buildAbaFuturos(filtros, futuros, null);
                 PaginacaoUpstreamDto upstreamPag = futuros.data() != null ? futuros.data().paginacao() : null;
                 return new ExtratoFiltrosResponse(
-                        new ExtratoFiltrosData(List.of("FUTUROS"), Map.of("FUTUROS", aba)),
+                        new ExtratoFiltrosData(List.of(ABA_FUTUROS), Map.of(ABA_FUTUROS, aba)),
                         buildPaginacao(upstreamPag));
             }
         } catch (FeignException e) {
@@ -130,6 +128,9 @@ public class ExtratoFiltrosService {
     }
 
     private void validarParametros(ExtratoFiltrosRequest request) {
+        if (request.pagina() < 1) {
+            throw new IllegalArgumentException("O parametro pagina deve ser >= 1.");
+        }
         if (request.periodo() == Periodo.PERSONALIZADO
                 && (request.dataInicial() == null || request.dataFinal() == null)) {
             throw new IllegalArgumentException(
@@ -161,8 +162,14 @@ public class ExtratoFiltrosService {
     }
 
     private CabecalhoResponse calcularCabecalho(List<LancamentoResponse> lancamentos) {
-        NumberFormat fmt = NumberFormat.getCurrencyInstance(PT_BR);
-        BigDecimal zero = BigDecimal.ZERO;
-        return new CabecalhoResponse(fmt.format(zero), fmt.format(zero), fmt.format(zero));
+        String zero = currencyFormatter.format(BigDecimal.ZERO);
+        return new CabecalhoResponse(zero, zero, zero);
+    }
+
+    private record UpstreamParams(String periodo, String entradaSaida, String lancamento, int pagina) {
+        static UpstreamParams from(ExtratoFiltrosRequest r) {
+            return new UpstreamParams(r.periodo().id, r.entradaSaida().name(),
+                    r.lancamento().name(), r.pagina());
+        }
     }
 }

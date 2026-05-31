@@ -3,17 +3,19 @@ package com.example.extrato.mapper;
 import com.example.extrato.dto.response.CategoriaResponse;
 import com.example.extrato.dto.response.LancamentoResponse;
 import com.example.extrato.dto.upstream.LancamentoRecenteUpstream;
+import com.example.extrato.util.CurrencyFormatter;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
-import java.text.NumberFormat;
 import java.util.List;
-import java.util.Locale;
 
 @Component
 public class RecentesMapper {
 
-    private static final Locale PT_BR = new Locale("pt", "BR");
+    private final CurrencyFormatter currencyFormatter;
+
+    public RecentesMapper(CurrencyFormatter currencyFormatter) {
+        this.currencyFormatter = currencyFormatter;
+    }
 
     public List<LancamentoResponse> toResponseList(List<LancamentoRecenteUpstream> lancamentos) {
         return lancamentos.stream().map(this::toResponse).toList();
@@ -24,15 +26,10 @@ public class RecentesMapper {
                 lancamento.tipo(),
                 lancamento.acao(),
                 lancamento.impacto(),
-                formatarBRL(lancamento.valor()),
+                currencyFormatter.format(lancamento.valor()),
                 lancamento.lancamento(),
                 new CategoriaResponse(lancamento.categoria().id(), lancamento.categoria().nome()),
                 lancamento.acao()
         );
-    }
-
-    private String formatarBRL(BigDecimal valor) {
-        return NumberFormat.getCurrencyInstance(PT_BR).format(valor)
-                .replace(' ', ' ');
     }
 }
