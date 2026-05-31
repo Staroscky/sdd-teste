@@ -43,7 +43,8 @@ class ExtratoFiltrosIntegrationTest {
                   "lancamento": "D",
                   "categoria": { "id": "uuid-1", "nome": "Transferencia" }
                 }
-              ]
+              ],
+              "paginacao": { "pagina": 1, "totalPaginas": 3, "totalRegistros": 25 }
             }
             """;
 
@@ -59,7 +60,8 @@ class ExtratoFiltrosIntegrationTest {
                     "lancamento": "C",
                     "categoria": { "id": "uuid-2", "nome": "Transferencia" }
                   }
-                ]
+                ],
+                "paginacao": { "pagina": 1, "totalPaginas": 2, "totalRegistros": 12 }
               }
             }
             """;
@@ -79,15 +81,19 @@ class ExtratoFiltrosIntegrationTest {
                         .withBody(FUTUROS_BODY)));
 
         mockMvc.perform(get("/api/v1/extratos-filtros")
-                        .param("periodo", "SETE_DIAS")
+                        .param("periodo", "7_DIAS")
                         .param("entradaSaida", "ENTRADA_SAIDA")
                         .param("lancamento", "D")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.ordemAbas[0]").value("RECENTES"))
-                .andExpect(jsonPath("$.ordemAbas[1]").value("FUTUROS"))
-                .andExpect(jsonPath("$.abas.RECENTES.dados[0].valor").value("R$ 100,00"))
-                .andExpect(jsonPath("$.abas.FUTUROS.dados[0].valor").value("R$ 100,00"));
+                .andExpect(jsonPath("$.data.ordemAbas[0]").value("RECENTES"))
+                .andExpect(jsonPath("$.data.ordemAbas[1]").value("FUTUROS"))
+                .andExpect(jsonPath("$.data.abas.RECENTES.dados[0].valor").value("R$ 100,00"))
+                .andExpect(jsonPath("$.data.abas.FUTUROS.dados[0].valor").value("R$ 100,00"))
+                .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.paginaAtual").value(1))
+                .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.totalRegistros").value(25))
+                .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.tamanhoPagina").value(10))
+                .andExpect(jsonPath("$.paginacao").doesNotExist());
     }
 
     @Test
@@ -114,7 +120,7 @@ class ExtratoFiltrosIntegrationTest {
                         .withBody(FUTUROS_BODY)));
 
         mockMvc.perform(get("/api/v1/extratos-filtros")
-                        .param("periodo", "SETE_DIAS")
+                        .param("periodo", "7_DIAS")
                         .param("entradaSaida", "ENTRADA_SAIDA")
                         .param("lancamento", "D")
                         .accept(MediaType.APPLICATION_JSON))

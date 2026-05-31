@@ -6,6 +6,5 @@ import java.util.List;
 
 public record FuturosDataUpstream(
         @JsonProperty("lancamentos_futuros") List<LancamentoFuturoUpstream> lancamentosFuturos,
-        Integer totalItens,
-        Integer totalPaginas
+        PaginacaoUpstreamDto paginacao
 ) {}

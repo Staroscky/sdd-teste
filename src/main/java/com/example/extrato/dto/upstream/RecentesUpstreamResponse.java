@@ -4,6 +4,5 @@ import java.util.List;
 
 public record RecentesUpstreamResponse(
         List<LancamentoRecenteUpstream> data,
-        Integer totalItens,
-        Integer totalPaginas
+        PaginacaoUpstreamDto paginacao
 ) {}

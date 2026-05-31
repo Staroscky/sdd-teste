@@ -1,8 +1,8 @@
 package com.example.extrato.dto.response;
 
 public record PaginacaoResponse(
-        int paginaAtual,
+        Integer paginaAtual,
         int tamanhoPagina,
-        Integer totalItens,
+        Integer totalRegistros,
         Integer totalPaginas
 ) {}

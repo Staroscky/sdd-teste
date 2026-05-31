@@ -10,6 +10,7 @@ import com.example.extrato.dto.request.TipoLancamento;
 import com.example.extrato.dto.response.ExtratoFiltrosResponse;
 import com.example.extrato.dto.upstream.FuturosDataUpstream;
 import com.example.extrato.dto.upstream.FuturosUpstreamResponse;
+import com.example.extrato.dto.upstream.PaginacaoUpstreamDto;
 import com.example.extrato.dto.upstream.RecentesUpstreamResponse;
 import com.example.extrato.exception.UpstreamException;
 import com.example.extrato.mapper.FiltrosMapper;
@@ -41,10 +42,16 @@ class ExtratoFiltrosServiceTest {
 
     private ExtratoFiltrosService service;
 
+    private static final PaginacaoUpstreamDto PAGINACAO_UPSTREAM =
+            new PaginacaoUpstreamDto(1, 5, 47);
     private static final RecentesUpstreamResponse RECENTES_VAZIO =
-            new RecentesUpstreamResponse(List.of(), null, null);
+            new RecentesUpstreamResponse(List.of(), null);
+    private static final RecentesUpstreamResponse RECENTES_COM_PAGINACAO =
+            new RecentesUpstreamResponse(List.of(), PAGINACAO_UPSTREAM);
     private static final FuturosUpstreamResponse FUTUROS_VAZIO =
-            new FuturosUpstreamResponse(new FuturosDataUpstream(List.of(), null, null));
+            new FuturosUpstreamResponse(new FuturosDataUpstream(List.of(), null));
+    private static final FuturosUpstreamResponse FUTUROS_COM_PAGINACAO =
+            new FuturosUpstreamResponse(new FuturosDataUpstream(List.of(), PAGINACAO_UPSTREAM));
 
     @BeforeEach
     void setUp() {
@@ -68,8 +75,34 @@ class ExtratoFiltrosServiceTest {
 
         assertThat(response.data().ordemAbas()).containsExactly("RECENTES", "FUTUROS");
         assertThat(response.data().abas()).containsKeys("RECENTES", "FUTUROS");
-        assertThat(response.paginacao().paginaAtual()).isEqualTo(1);
-        assertThat(response.paginacao().tamanhoPagina()).isEqualTo(10);
+    }
+
+    @Test
+    void semAba_paginacaoDeveEstarDentroDeCartaAba_naoNaRaiz() {
+        when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(RECENTES_COM_PAGINACAO);
+        when(futurosClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(FUTUROS_COM_PAGINACAO);
+
+        ExtratoFiltrosResponse response = service.buscar(request(null));
+
+        assertThat(response.paginacao()).isNull();
+        assertThat(response.data().abas().get("RECENTES").paginacao()).isNotNull();
+        assertThat(response.data().abas().get("RECENTES").paginacao().paginaAtual()).isEqualTo(1);
+        assertThat(response.data().abas().get("RECENTES").paginacao().totalRegistros()).isEqualTo(47);
+        assertThat(response.data().abas().get("RECENTES").paginacao().totalPaginas()).isEqualTo(5);
+        assertThat(response.data().abas().get("RECENTES").paginacao().tamanhoPagina()).isEqualTo(10);
+        assertThat(response.data().abas().get("FUTUROS").paginacao()).isNotNull();
+    }
+
+    @Test
+    void semAba_upstreamSemPaginacao_paginacaoDeveSerNull() {
+        when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(RECENTES_VAZIO);
+        when(futurosClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(FUTUROS_VAZIO);
+
+        ExtratoFiltrosResponse response = service.buscar(request(null));
+
+        assertThat(response.paginacao()).isNull();
+        assertThat(response.data().abas().get("RECENTES").paginacao()).isNull();
+        assertThat(response.data().abas().get("FUTUROS").paginacao()).isNull();
     }
 
     @Test
@@ -84,6 +117,20 @@ class ExtratoFiltrosServiceTest {
     }
 
     @Test
+    void abaRecentes_paginacaoDeveEstarNaRaiz_naoNaAba() {
+        when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(RECENTES_COM_PAGINACAO);
+
+        ExtratoFiltrosResponse response = service.buscar(request(Aba.RECENTES));
+
+        assertThat(response.paginacao()).isNotNull();
+        assertThat(response.paginacao().paginaAtual()).isEqualTo(1);
+        assertThat(response.paginacao().totalRegistros()).isEqualTo(47);
+        assertThat(response.paginacao().tamanhoPagina()).isEqualTo(10);
+        assertThat(response.data().abas().get("RECENTES").paginacao()).isNull();
+    }
+
+    @Test
     void abaFuturos_deveChamarApenasFuturosERetornarUmaAba() {
         when(futurosClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(FUTUROS_VAZIO);
 
@@ -95,27 +142,21 @@ class ExtratoFiltrosServiceTest {
     }
 
     @Test
-    void paginacaoDeveConterPaginaAtualETamanhoPagina() {
-        when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(RECENTES_VAZIO);
-        when(futurosClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(FUTUROS_VAZIO);
+    void tamanhoPaginaSempreDeveSerDezIndependenteDoUpstream() {
+        when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(RECENTES_COM_PAGINACAO);
 
-        var requestPagina3 = new ExtratoFiltrosRequest(
-                Periodo.SETE_DIAS, null, null,
-                EntradaSaida.ENTRADA_SAIDA, TipoLancamento.D, null, 3);
+        ExtratoFiltrosResponse response = service.buscar(request(Aba.RECENTES));
 
-        ExtratoFiltrosResponse response = service.buscar(requestPagina3);
-
-        assertThat(response.paginacao().paginaAtual()).isEqualTo(3);
         assertThat(response.paginacao().tamanhoPagina()).isEqualTo(10);
-        assertThat(response.paginacao().totalItens()).isNull();
-        assertThat(response.paginacao().totalPaginas()).isNull();
     }
 
     @Test
     void falhaUpstream_deveLancarUpstreamException() {
         when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt()))
                 .thenThrow(mock(FeignException.class));
-        when(futurosClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(FUTUROS_VAZIO);
+        when(futurosClient.buscar(any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(FUTUROS_VAZIO);
 
         assertThatThrownBy(() -> service.buscar(request(null)))
                 .isInstanceOf(UpstreamException.class);
