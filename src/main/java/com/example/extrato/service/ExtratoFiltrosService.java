@@ -7,6 +7,7 @@ import com.example.extrato.dto.request.ExtratoFiltrosRequest;
 import com.example.extrato.dto.request.Periodo;
 import com.example.extrato.dto.response.AbaResponse;
 import com.example.extrato.dto.response.CabecalhoResponse;
+import com.example.extrato.dto.response.ErroResponse;
 import com.example.extrato.dto.response.ExtratoFiltrosData;
 import com.example.extrato.dto.response.ExtratoFiltrosResponse;
 import com.example.extrato.dto.response.FiltroResponse;
@@ -15,12 +16,14 @@ import com.example.extrato.dto.response.PaginacaoResponse;
 import com.example.extrato.dto.upstream.FuturosUpstreamResponse;
 import com.example.extrato.dto.upstream.PaginacaoUpstreamDto;
 import com.example.extrato.dto.upstream.RecentesUpstreamResponse;
-import com.example.extrato.exception.UpstreamException;
 import com.example.extrato.mapper.FiltrosMapper;
 import com.example.extrato.mapper.FuturosMapper;
 import com.example.extrato.mapper.RecentesMapper;
 import com.example.extrato.util.CurrencyFormatter;
-import feign.FeignException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -33,6 +36,8 @@ import java.util.concurrent.Executors;
 @Service
 public class ExtratoFiltrosService {
 
+    private static final Logger log = LoggerFactory.getLogger(ExtratoFiltrosService.class);
+
     private static final int TAMANHO_PAGINA = 10;
     private static final String ABA_RECENTES = Aba.RECENTES.name();
     private static final String ABA_FUTUROS = Aba.FUTUROS.name();
@@ -43,16 +48,19 @@ public class ExtratoFiltrosService {
     private final FuturosMapper futurosMapper;
     private final FiltrosMapper filtrosMapper;
     private final CurrencyFormatter currencyFormatter;
+    private final CircuitBreakerFactory<?, ?> circuitBreakerFactory;
 
     public ExtratoFiltrosService(RecentesClient recentesClient, FuturosClient futurosClient,
                                   RecentesMapper recentesMapper, FuturosMapper futurosMapper,
-                                  FiltrosMapper filtrosMapper, CurrencyFormatter currencyFormatter) {
+                                  FiltrosMapper filtrosMapper, CurrencyFormatter currencyFormatter,
+                                  CircuitBreakerFactory<?, ?> circuitBreakerFactory) {
         this.recentesClient = recentesClient;
         this.futurosClient = futurosClient;
         this.recentesMapper = recentesMapper;
         this.futurosMapper = futurosMapper;
         this.filtrosMapper = filtrosMapper;
         this.currencyFormatter = currencyFormatter;
+        this.circuitBreakerFactory = circuitBreakerFactory;
     }
 
     public ExtratoFiltrosResponse buscar(ExtratoFiltrosRequest request) {
@@ -71,30 +79,25 @@ public class ExtratoFiltrosService {
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var recentesFuture = CompletableFuture.supplyAsync(
-                    () -> recentesClient.buscar(params.periodo(), params.entradaSaida(),
-                            params.lancamento(), params.pagina(), TAMANHO_PAGINA), executor);
+                    () -> buscarRecentesComCircuitBreaker(params, filtros), executor);
             var futurosFuture = CompletableFuture.supplyAsync(
-                    () -> futurosClient.buscar(params.periodo(), params.entradaSaida(),
-                            params.lancamento(), params.pagina(), TAMANHO_PAGINA), executor);
+                    () -> buscarFuturosComCircuitBreaker(params, filtros), executor);
 
             try {
                 CompletableFuture.allOf(recentesFuture, futurosFuture).join();
             } catch (CompletionException e) {
-                throw new UpstreamException("Falha na chamada upstream", e.getCause());
+                throw new RuntimeException("Falha inesperada na chamada upstream", e.getCause());
             }
 
-            RecentesUpstreamResponse recentes = recentesFuture.join();
-            FuturosUpstreamResponse futuros = futurosFuture.join();
+            AbaResult recentesResult = recentesFuture.join();
+            AbaResult futurosResult = futurosFuture.join();
 
-            AbaResponse abaRecentes = buildAbaRecentes(filtros, recentes,
-                    buildPaginacao(recentes.paginacao()));
-            AbaResponse abaFuturos = buildAbaFuturos(filtros, futuros,
-                    buildPaginacao(futuros.data() != null ? futuros.data().paginacao() : null));
+            ErroResponse erro = resolverErroAmbasAbas(recentesResult.falhou(), futurosResult.falhou());
 
             ExtratoFiltrosData data = new ExtratoFiltrosData(
                     List.of(ABA_RECENTES, ABA_FUTUROS),
-                    Map.of(ABA_RECENTES, abaRecentes, ABA_FUTUROS, abaFuturos));
-            return new ExtratoFiltrosResponse(data, null);
+                    Map.of(ABA_RECENTES, recentesResult.aba(), ABA_FUTUROS, futurosResult.aba()));
+            return new ExtratoFiltrosResponse(data, null, erro);
         }
     }
 
@@ -102,29 +105,66 @@ public class ExtratoFiltrosService {
                                                         List<FiltroResponse> filtros) {
         UpstreamParams params = UpstreamParams.from(request);
 
-        try {
-            if (request.aba() == Aba.RECENTES) {
-                RecentesUpstreamResponse recentes =
-                        recentesClient.buscar(params.periodo(), params.entradaSaida(),
-                                params.lancamento(), params.pagina(), TAMANHO_PAGINA);
-                AbaResponse aba = buildAbaRecentes(filtros, recentes, null);
-                PaginacaoResponse paginacao = buildPaginacao(recentes.paginacao());
-                return new ExtratoFiltrosResponse(
-                        new ExtratoFiltrosData(List.of(ABA_RECENTES), Map.of(ABA_RECENTES, aba)),
-                        paginacao);
-            } else {
-                FuturosUpstreamResponse futuros =
-                        futurosClient.buscar(params.periodo(), params.entradaSaida(),
-                                params.lancamento(), params.pagina(), TAMANHO_PAGINA);
-                AbaResponse aba = buildAbaFuturos(filtros, futuros, null);
-                PaginacaoUpstreamDto upstreamPag = futuros.data() != null ? futuros.data().paginacao() : null;
-                return new ExtratoFiltrosResponse(
-                        new ExtratoFiltrosData(List.of(ABA_FUTUROS), Map.of(ABA_FUTUROS, aba)),
-                        buildPaginacao(upstreamPag));
-            }
-        } catch (FeignException e) {
-            throw new UpstreamException("Falha na chamada upstream", e);
+        if (request.aba() == Aba.RECENTES) {
+            AbaResult result = buscarRecentesComCircuitBreaker(params, filtros);
+            PaginacaoResponse paginacao = result.falhou() ? null
+                    : buildPaginacao(result.recentesUpstream() != null ? result.recentesUpstream().paginacao() : null);
+            ErroResponse erro = result.falhou() ? ErroResponse.indisponivel() : null;
+            return new ExtratoFiltrosResponse(
+                    new ExtratoFiltrosData(List.of(ABA_RECENTES), Map.of(ABA_RECENTES, result.aba())),
+                    paginacao, erro);
+        } else {
+            AbaResult result = buscarFuturosComCircuitBreaker(params, filtros);
+            PaginacaoUpstreamDto upstreamPag = (!result.falhou() && result.futurosUpstream() != null
+                    && result.futurosUpstream().data() != null)
+                    ? result.futurosUpstream().data().paginacao() : null;
+            ErroResponse erro = result.falhou() ? ErroResponse.indisponivel() : null;
+            return new ExtratoFiltrosResponse(
+                    new ExtratoFiltrosData(List.of(ABA_FUTUROS), Map.of(ABA_FUTUROS, result.aba())),
+                    buildPaginacao(upstreamPag), erro);
         }
+    }
+
+    private AbaResult buscarRecentesComCircuitBreaker(UpstreamParams params, List<FiltroResponse> filtros) {
+        try {
+            RecentesUpstreamResponse upstream = circuitBreakerFactory.create("recentes").run(
+                    () -> recentesClient.buscar(params.periodo(), params.entradaSaida(),
+                            params.lancamento(), params.pagina(), TAMANHO_PAGINA),
+                    throwable -> { throw new CircuitAbertaException(throwable); }
+            );
+            AbaResponse aba = buildAbaRecentes(filtros, upstream, buildPaginacao(upstream.paginacao()));
+            return AbaResult.sucesso(aba, upstream, null);
+        } catch (CircuitAbertaException | CallNotPermittedException e) {
+            log.warn("Circuit breaker aberto para upstream recentes: {}", e.getMessage());
+            return AbaResult.fallback(buildAbaFallback(filtros));
+        }
+    }
+
+    private AbaResult buscarFuturosComCircuitBreaker(UpstreamParams params, List<FiltroResponse> filtros) {
+        try {
+            FuturosUpstreamResponse upstream = circuitBreakerFactory.create("futuros").run(
+                    () -> futurosClient.buscar(params.periodo(), params.entradaSaida(),
+                            params.lancamento(), params.pagina(), TAMANHO_PAGINA),
+                    throwable -> { throw new CircuitAbertaException(throwable); }
+            );
+            PaginacaoUpstreamDto pag = upstream.data() != null ? upstream.data().paginacao() : null;
+            AbaResponse aba = buildAbaFuturos(filtros, upstream, buildPaginacao(pag));
+            return AbaResult.sucesso(aba, null, upstream);
+        } catch (CircuitAbertaException | CallNotPermittedException e) {
+            log.warn("Circuit breaker aberto para upstream futuros: {}", e.getMessage());
+            return AbaResult.fallback(buildAbaFallback(filtros));
+        }
+    }
+
+    private AbaResponse buildAbaFallback(List<FiltroResponse> filtros) {
+        String zero = currencyFormatter.format(BigDecimal.ZERO);
+        return new AbaResponse(List.of(), new CabecalhoResponse(zero, zero, zero), List.of(), null);
+    }
+
+    private ErroResponse resolverErroAmbasAbas(boolean recentesFalhou, boolean futurosFalhou) {
+        if (recentesFalhou && futurosFalhou) return ErroResponse.indisponivel();
+        if (recentesFalhou || futurosFalhou) return ErroResponse.parcialmenteIndisponivel();
+        return null;
     }
 
     private void validarParametros(ExtratoFiltrosRequest request) {
@@ -170,6 +210,23 @@ public class ExtratoFiltrosService {
         static UpstreamParams from(ExtratoFiltrosRequest r) {
             return new UpstreamParams(r.periodo().id, r.entradaSaida().name(),
                     r.lancamento().name(), r.pagina());
+        }
+    }
+
+    private record AbaResult(AbaResponse aba, boolean falhou,
+                              RecentesUpstreamResponse recentesUpstream,
+                              FuturosUpstreamResponse futurosUpstream) {
+        static AbaResult sucesso(AbaResponse aba, RecentesUpstreamResponse r, FuturosUpstreamResponse f) {
+            return new AbaResult(aba, false, r, f);
+        }
+        static AbaResult fallback(AbaResponse aba) {
+            return new AbaResult(aba, true, null, null);
+        }
+    }
+
+    private static class CircuitAbertaException extends RuntimeException {
+        CircuitAbertaException(Throwable cause) {
+            super(cause != null ? cause.getMessage() : "circuit breaker aberto", cause);
         }
     }
 }

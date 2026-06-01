@@ -14,15 +14,48 @@ feign:
   client:
     config:
       default:
-        connectTimeout: 3000
-        readTimeout: 5000
         loggerLevel: FULL
 
 upstream:
   recentes:
     url: ${UPSTREAM_RECENTES_URL:http://localhost:9001}
+    timeout:
+      connect: ${UPSTREAM_RECENTES_CONNECT_TIMEOUT:3000}
+      read: ${UPSTREAM_RECENTES_READ_TIMEOUT:5000}
   futuros:
     url: ${UPSTREAM_FUTUROS_URL:http://localhost:9002}
+    timeout:
+      connect: ${UPSTREAM_FUTUROS_CONNECT_TIMEOUT:3000}
+      read: ${UPSTREAM_FUTUROS_READ_TIMEOUT:5000}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      recentes:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        registerHealthIndicator: true
+      futuros:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        registerHealthIndicator: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,circuitbreakers
+  health:
+    circuitbreakers:
+      enabled: true
 
 logbook:
   obfuscate:
