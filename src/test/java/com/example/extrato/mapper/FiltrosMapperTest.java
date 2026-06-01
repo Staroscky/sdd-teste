@@ -48,7 +48,7 @@ class FiltrosMapperTest {
 
         for (FiltroResponse filtro : filtros) {
             long selecionadas = filtro.opcoes().stream()
-                    .filter(OpcaoFiltroResponse::selecionado)
+                    .filter(o -> Boolean.TRUE.equals(o.selecionado()))
                     .count();
             assertThat(selecionadas)
                     .as("Filtro '%s' deve ter exatamente 1 opcao selecionada", filtro.id())
@@ -62,7 +62,7 @@ class FiltrosMapperTest {
 
         for (FiltroResponse filtro : filtros) {
             String tituloOpcaoSelecionada = filtro.opcoes().stream()
-                    .filter(OpcaoFiltroResponse::selecionado)
+                    .filter(o -> Boolean.TRUE.equals(o.selecionado()))
                     .map(OpcaoFiltroResponse::titulo)
                     .findFirst().orElseThrow();
             assertThat(filtro.titulo())

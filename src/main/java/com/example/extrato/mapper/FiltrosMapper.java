@@ -25,7 +25,11 @@ public class FiltrosMapper {
     private FiltroResponse buildFiltroPeriodo(Periodo selecionado) {
         String placeholder = "Periodo";
         List<OpcaoFiltroResponse> opcoes = Arrays.stream(Periodo.values())
-                .map(p -> new OpcaoFiltroResponse(p.id, tituloPeriodo(p), p == selecionado, metadadosPeriodo(p)))
+                .map(p -> {
+                    Map<String, String> metadados = metadadosPeriodo(p);
+                    Boolean sel = (metadados != null) ? null : (p == selecionado);
+                    return new OpcaoFiltroResponse(p.id, tituloPeriodo(p), sel, metadados);
+                })
                 .toList();
         return new FiltroResponse("periodo", resolverTituloSelecionado(opcoes, placeholder), placeholder, opcoes);
     }
@@ -40,7 +44,7 @@ public class FiltrosMapper {
 
     private String resolverTituloSelecionado(List<OpcaoFiltroResponse> opcoes, String placeholder) {
         return opcoes.stream()
-                .filter(OpcaoFiltroResponse::selecionado)
+                .filter(o -> Boolean.TRUE.equals(o.selecionado()))
                 .map(OpcaoFiltroResponse::titulo)
                 .findFirst()
                 .orElse(placeholder);
@@ -59,7 +63,7 @@ public class FiltrosMapper {
     private Map<String, String> metadadosPeriodo(Periodo periodo) {
         if (periodo != Periodo.PERSONALIZADO) return null;
         return Map.of(
-                "dataMinima", LocalDate.now().minusYears(2).toString(),
+                "dataMinima", LocalDate.now().minusYears(5).toString(),
                 "dataMaxima", LocalDate.now().toString()
         );
     }

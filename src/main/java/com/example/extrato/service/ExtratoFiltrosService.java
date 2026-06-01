@@ -19,14 +19,12 @@ import com.example.extrato.dto.upstream.RecentesUpstreamResponse;
 import com.example.extrato.mapper.FiltrosMapper;
 import com.example.extrato.mapper.FuturosMapper;
 import com.example.extrato.mapper.RecentesMapper;
-import com.example.extrato.util.CurrencyFormatter;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -42,24 +40,28 @@ public class ExtratoFiltrosService {
     private static final String ABA_RECENTES = Aba.RECENTES.name();
     private static final String ABA_FUTUROS = Aba.FUTUROS.name();
 
+    private static final List<CabecalhoResponse> CABECALHO_FIXO = List.of(
+            new CabecalhoResponse("Data", "data"),
+            new CabecalhoResponse("Tipo", "tipo"),
+            new CabecalhoResponse("Valor", "valor")
+    );
+
     private final RecentesClient recentesClient;
     private final FuturosClient futurosClient;
     private final RecentesMapper recentesMapper;
     private final FuturosMapper futurosMapper;
     private final FiltrosMapper filtrosMapper;
-    private final CurrencyFormatter currencyFormatter;
     private final CircuitBreakerFactory<?, ?> circuitBreakerFactory;
 
     public ExtratoFiltrosService(RecentesClient recentesClient, FuturosClient futurosClient,
                                   RecentesMapper recentesMapper, FuturosMapper futurosMapper,
-                                  FiltrosMapper filtrosMapper, CurrencyFormatter currencyFormatter,
+                                  FiltrosMapper filtrosMapper,
                                   CircuitBreakerFactory<?, ?> circuitBreakerFactory) {
         this.recentesClient = recentesClient;
         this.futurosClient = futurosClient;
         this.recentesMapper = recentesMapper;
         this.futurosMapper = futurosMapper;
         this.filtrosMapper = filtrosMapper;
-        this.currencyFormatter = currencyFormatter;
         this.circuitBreakerFactory = circuitBreakerFactory;
     }
 
@@ -97,7 +99,7 @@ public class ExtratoFiltrosService {
             ExtratoFiltrosData data = new ExtratoFiltrosData(
                     List.of(ABA_RECENTES, ABA_FUTUROS),
                     Map.of(ABA_RECENTES, recentesResult.aba(), ABA_FUTUROS, futurosResult.aba()));
-            return new ExtratoFiltrosResponse(data, null, erro);
+            return new ExtratoFiltrosResponse(data, erro);
         }
     }
 
@@ -107,21 +109,16 @@ public class ExtratoFiltrosService {
 
         if (request.aba() == Aba.RECENTES) {
             AbaResult result = buscarRecentesComCircuitBreaker(params, filtros);
-            PaginacaoResponse paginacao = result.falhou() ? null
-                    : buildPaginacao(result.recentesUpstream() != null ? result.recentesUpstream().paginacao() : null);
             ErroResponse erro = result.falhou() ? ErroResponse.indisponivel() : null;
             return new ExtratoFiltrosResponse(
                     new ExtratoFiltrosData(List.of(ABA_RECENTES), Map.of(ABA_RECENTES, result.aba())),
-                    paginacao, erro);
+                    erro);
         } else {
             AbaResult result = buscarFuturosComCircuitBreaker(params, filtros);
-            PaginacaoUpstreamDto upstreamPag = (!result.falhou() && result.futurosUpstream() != null
-                    && result.futurosUpstream().data() != null)
-                    ? result.futurosUpstream().data().paginacao() : null;
             ErroResponse erro = result.falhou() ? ErroResponse.indisponivel() : null;
             return new ExtratoFiltrosResponse(
                     new ExtratoFiltrosData(List.of(ABA_FUTUROS), Map.of(ABA_FUTUROS, result.aba())),
-                    buildPaginacao(upstreamPag), erro);
+                    erro);
         }
     }
 
@@ -157,8 +154,7 @@ public class ExtratoFiltrosService {
     }
 
     private AbaResponse buildAbaFallback(List<FiltroResponse> filtros) {
-        String zero = currencyFormatter.format(BigDecimal.ZERO);
-        return new AbaResponse(List.of(), new CabecalhoResponse(zero, zero, zero), List.of(), null);
+        return new AbaResponse(List.of(), CABECALHO_FIXO, List.of(), null);
     }
 
     private ErroResponse resolverErroAmbasAbas(boolean recentesFalhou, boolean futurosFalhou) {
@@ -183,7 +179,7 @@ public class ExtratoFiltrosService {
                                           PaginacaoResponse paginacao) {
         List<LancamentoResponse> dados = recentesMapper.toResponseList(
                 recentes.data() != null ? recentes.data() : List.of());
-        return new AbaResponse(filtros, calcularCabecalho(dados), dados, paginacao);
+        return new AbaResponse(filtros, CABECALHO_FIXO, dados, paginacao);
     }
 
     private AbaResponse buildAbaFuturos(List<FiltroResponse> filtros,
@@ -192,18 +188,13 @@ public class ExtratoFiltrosService {
         List<LancamentoResponse> dados = futurosMapper.toResponseList(
                 futuros.data() != null && futuros.data().lancamentosFuturos() != null
                         ? futuros.data().lancamentosFuturos() : List.of());
-        return new AbaResponse(filtros, calcularCabecalho(dados), dados, paginacao);
+        return new AbaResponse(filtros, CABECALHO_FIXO, dados, paginacao);
     }
 
     private PaginacaoResponse buildPaginacao(PaginacaoUpstreamDto upstream) {
         if (upstream == null) return null;
         return new PaginacaoResponse(upstream.pagina(), TAMANHO_PAGINA,
                 upstream.totalRegistros(), upstream.totalPaginas());
-    }
-
-    private CabecalhoResponse calcularCabecalho(List<LancamentoResponse> lancamentos) {
-        String zero = currencyFormatter.format(BigDecimal.ZERO);
-        return new CabecalhoResponse(zero, zero, zero);
     }
 
     private record UpstreamParams(String periodo, String entradaSaida, String lancamento, int pagina) {
