@@ -17,7 +17,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "upstream.recentes.url=http://localhost:${wiremock.server.port}",
-                "upstream.futuros.url=http://localhost:${wiremock.server.port}"
+                "upstream.futuros.url=http://localhost:${wiremock.server.port}",
+                // CB com threshold baixo para testes: abre após 1 falha em janela de 1
+                "resilience4j.circuitbreaker.instances.recentes.sliding-window-size=2",
+                "resilience4j.circuitbreaker.instances.recentes.minimum-number-of-calls=1",
+                "resilience4j.circuitbreaker.instances.recentes.failure-rate-threshold=50",
+                "resilience4j.circuitbreaker.instances.recentes.wait-duration-in-open-state=2s",
+                "resilience4j.circuitbreaker.instances.futuros.sliding-window-size=2",
+                "resilience4j.circuitbreaker.instances.futuros.minimum-number-of-calls=1",
+                "resilience4j.circuitbreaker.instances.futuros.failure-rate-threshold=50",
+                "resilience4j.circuitbreaker.instances.futuros.wait-duration-in-open-state=2s"
         }
 )
 @AutoConfigureMockMvc
@@ -93,7 +102,8 @@ class ExtratoFiltrosIntegrationTest {
                 .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.paginaAtual").value(1))
                 .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.totalRegistros").value(25))
                 .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.tamanhoPagina").value(10))
-                .andExpect(jsonPath("$.paginacao").doesNotExist());
+                .andExpect(jsonPath("$.paginacao").doesNotExist())
+                .andExpect(jsonPath("$.erro").doesNotExist());
     }
 
     @Test
@@ -109,7 +119,7 @@ class ExtratoFiltrosIntegrationTest {
     }
 
     @Test
-    void deveRetornar502QuandoRecentesFalha() throws Exception {
+    void falhaUpstreamRecentes_deveRetornar200ComAbaVaziaEErro() throws Exception {
         WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/recentes"))
                 .willReturn(WireMock.aResponse().withStatus(500)));
 
@@ -124,8 +134,75 @@ class ExtratoFiltrosIntegrationTest {
                         .param("entradaSaida", "ENTRADA_SAIDA")
                         .param("lancamento", "D")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.codigo").value("UPSTREAM_INDISPONIVEL"))
-                .andExpect(jsonPath("$.mensagem").exists());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.abas.RECENTES.dados").isEmpty())
+                .andExpect(jsonPath("$.data.abas.RECENTES.filtros").isEmpty())
+                .andExpect(jsonPath("$.data.abas.FUTUROS.dados[0].valor").value("R$ 100,00"))
+                .andExpect(jsonPath("$.erro.codigo").value("UPSTREAM_PARCIALMENTE_INDISPONIVEL"))
+                .andExpect(jsonPath("$.erro.mensagem").exists());
+    }
+
+    @Test
+    void falhaAmbasAbas_deveRetornar200ComTodasAbasVaziasEErroIndisponivel() throws Exception {
+        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/recentes"))
+                .willReturn(WireMock.aResponse().withStatus(500)));
+
+        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/futuros"))
+                .willReturn(WireMock.aResponse().withStatus(500)));
+
+        mockMvc.perform(get("/api/v1/extratos-filtros")
+                        .param("periodo", "7_DIAS")
+                        .param("entradaSaida", "ENTRADA_SAIDA")
+                        .param("lancamento", "D")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.abas.RECENTES.dados").isEmpty())
+                .andExpect(jsonPath("$.data.abas.FUTUROS.dados").isEmpty())
+                .andExpect(jsonPath("$.erro.codigo").value("UPSTREAM_INDISPONIVEL"))
+                .andExpect(jsonPath("$.erro.mensagem").exists());
+    }
+
+    @Test
+    void circuitBreakerAberto_deveRetornarFallbackSemChamarUpstream() throws Exception {
+        // Força abertura do CB fazendo 1 chamada falha (minimumNumberOfCalls=1 no perfil de teste)
+        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/recentes"))
+                .willReturn(WireMock.aResponse().withStatus(500)));
+        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/futuros"))
+                .willReturn(WireMock.aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(FUTUROS_BODY)));
+
+        // Primeira chamada: falha real que abre o CB
+        mockMvc.perform(get("/api/v1/extratos-filtros")
+                        .param("periodo", "7_DIAS")
+                        .param("entradaSaida", "ENTRADA_SAIDA")
+                        .param("lancamento", "D")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.erro.codigo").value("UPSTREAM_PARCIALMENTE_INDISPONIVEL"));
+
+        // Remove o stub de falha — o upstream "voltou", mas o CB ainda está OPEN
+        WireMock.reset();
+        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/recentes"))
+                .willReturn(WireMock.aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(RECENTES_BODY)));
+        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/futuros"))
+                .willReturn(WireMock.aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(FUTUROS_BODY)));
+
+        // Segunda chamada imediata: CB OPEN — deve retornar fallback sem chamar o upstream
+        mockMvc.perform(get("/api/v1/extratos-filtros")
+                        .param("periodo", "7_DIAS")
+                        .param("entradaSaida", "ENTRADA_SAIDA")
+                        .param("lancamento", "D")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.abas.RECENTES.dados").isEmpty())
+                .andExpect(jsonPath("$.erro.codigo").value("UPSTREAM_PARCIALMENTE_INDISPONIVEL"));
     }
 }

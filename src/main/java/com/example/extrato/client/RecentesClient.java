@@ -1,11 +1,12 @@
 package com.example.extrato.client;
 
+import com.example.extrato.config.RecentesFeignConfig;
 import com.example.extrato.dto.upstream.RecentesUpstreamResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "recentes-client", url = "${upstream.recentes.url}")
+@FeignClient(name = "recentes-client", url = "${upstream.recentes.url}", configuration = RecentesFeignConfig.class)
 public interface RecentesClient {
 
     @GetMapping("/recentes")
