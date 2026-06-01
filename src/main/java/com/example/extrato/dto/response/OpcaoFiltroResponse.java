@@ -8,6 +8,6 @@ import java.util.Map;
 public record OpcaoFiltroResponse(
         String id,
         String titulo,
-        boolean selecionado,
+        Boolean selecionado,
         Map<String, String> metadados
 ) {}

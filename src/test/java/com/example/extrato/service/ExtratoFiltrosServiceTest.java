@@ -26,6 +26,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 
+import java.util.function.Function;
+import java.util.function.Supplier;
+
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,14 +60,23 @@ class ExtratoFiltrosServiceTest {
     private static final FuturosUpstreamResponse FUTUROS_COM_PAGINACAO =
             new FuturosUpstreamResponse(new FuturosDataUpstream(List.of(), PAGINACAO_UPSTREAM));
 
-    /** Circuit breaker que delega direto ao supplier (circuito CLOSED) */
-    @SuppressWarnings("unchecked")
-    private static final CircuitBreaker CB_FECHADO = (supplier, fallback) -> supplier.get();
+    private static final CircuitBreaker CB_FECHADO = new CircuitBreaker() {
+        @Override
+        public <T> T run(Supplier<T> toRun, Function<Throwable, T> fallback) {
+            try {
+                return toRun.get();
+            } catch (Exception e) {
+                return fallback.apply(e);
+            }
+        }
+    };
 
-    /** Circuit breaker que chama o fallback com uma exceção (circuito OPEN) */
-    @SuppressWarnings("unchecked")
-    private static final CircuitBreaker CB_ABERTO =
-            (supplier, fallback) -> fallback.apply(new RuntimeException("circuit breaker aberto"));
+    private static final CircuitBreaker CB_ABERTO = new CircuitBreaker() {
+        @Override
+        public <T> T run(Supplier<T> toRun, Function<Throwable, T> fallback) {
+            return fallback.apply(new RuntimeException("circuit breaker aberto"));
+        }
+    };
 
     @BeforeEach
     void setUp() {
@@ -72,7 +84,7 @@ class ExtratoFiltrosServiceTest {
         service = new ExtratoFiltrosService(
                 recentesClient, futurosClient,
                 new RecentesMapper(currencyFormatter), new FuturosMapper(currencyFormatter),
-                new FiltrosMapper(), currencyFormatter, circuitBreakerFactory);
+                new FiltrosMapper(), circuitBreakerFactory);
     }
 
     private ExtratoFiltrosRequest request(Aba aba) {
@@ -98,7 +110,7 @@ class ExtratoFiltrosServiceTest {
     }
 
     @Test
-    void semAba_paginacaoDeveEstarDentroDeCartaAba_naoNaRaiz() {
+    void semAba_paginacaoDeveEstarDentroDeCartaAba() {
         when(circuitBreakerFactory.create(eq("recentes"))).thenReturn(CB_FECHADO);
         when(circuitBreakerFactory.create(eq("futuros"))).thenReturn(CB_FECHADO);
         when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(RECENTES_COM_PAGINACAO);
@@ -106,7 +118,6 @@ class ExtratoFiltrosServiceTest {
 
         ExtratoFiltrosResponse response = service.buscar(request(null));
 
-        assertThat(response.paginacao()).isNull();
         assertThat(response.data().abas().get("RECENTES").paginacao()).isNotNull();
         assertThat(response.data().abas().get("RECENTES").paginacao().paginaAtual()).isEqualTo(1);
         assertThat(response.data().abas().get("RECENTES").paginacao().totalRegistros()).isEqualTo(47);
@@ -124,7 +135,6 @@ class ExtratoFiltrosServiceTest {
 
         ExtratoFiltrosResponse response = service.buscar(request(null));
 
-        assertThat(response.paginacao()).isNull();
         assertThat(response.data().abas().get("RECENTES").paginacao()).isNull();
         assertThat(response.data().abas().get("FUTUROS").paginacao()).isNull();
     }
@@ -143,18 +153,17 @@ class ExtratoFiltrosServiceTest {
     }
 
     @Test
-    void abaRecentes_paginacaoDeveEstarNaRaiz_naoNaAba() {
+    void abaRecentes_paginacaoDeveEstarDentroDeAba() {
         when(circuitBreakerFactory.create(eq("recentes"))).thenReturn(CB_FECHADO);
         when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(RECENTES_COM_PAGINACAO);
 
         ExtratoFiltrosResponse response = service.buscar(request(Aba.RECENTES));
 
-        assertThat(response.paginacao()).isNotNull();
-        assertThat(response.paginacao().paginaAtual()).isEqualTo(1);
-        assertThat(response.paginacao().totalRegistros()).isEqualTo(47);
-        assertThat(response.paginacao().tamanhoPagina()).isEqualTo(10);
-        assertThat(response.data().abas().get("RECENTES").paginacao()).isNull();
+        assertThat(response.data().abas().get("RECENTES").paginacao()).isNotNull();
+        assertThat(response.data().abas().get("RECENTES").paginacao().paginaAtual()).isEqualTo(1);
+        assertThat(response.data().abas().get("RECENTES").paginacao().totalRegistros()).isEqualTo(47);
+        assertThat(response.data().abas().get("RECENTES").paginacao().tamanhoPagina()).isEqualTo(10);
     }
 
     @Test
@@ -171,17 +180,41 @@ class ExtratoFiltrosServiceTest {
     }
 
     @Test
-    void tamanhoPaginaSempreDeveSerDezIndependenteDoUpstream() {
+    void tamanhoPaginaSempreDeveSerDez() {
         when(circuitBreakerFactory.create(eq("recentes"))).thenReturn(CB_FECHADO);
         when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(RECENTES_COM_PAGINACAO);
 
         ExtratoFiltrosResponse response = service.buscar(request(Aba.RECENTES));
 
-        assertThat(response.paginacao().tamanhoPagina()).isEqualTo(10);
+        assertThat(response.data().abas().get("RECENTES").paginacao().tamanhoPagina()).isEqualTo(10);
     }
 
-    // ─── Cenários de circuit breaker OPEN (T021–T023) ────────────────────────
+    @Test
+    void abaResponse_deveConterCabecalhoFixoComTresColunas() {
+        when(circuitBreakerFactory.create(eq("recentes"))).thenReturn(CB_FECHADO);
+        when(recentesClient.buscar(any(), any(), any(), anyInt(), anyInt())).thenReturn(RECENTES_VAZIO);
+
+        ExtratoFiltrosResponse response = service.buscar(request(Aba.RECENTES));
+
+        var cabecalho = response.data().abas().get("RECENTES").cabecalho();
+        assertThat(cabecalho).hasSize(3);
+        assertThat(cabecalho).extracting("id").containsExactly("data", "tipo", "valor");
+        assertThat(cabecalho).extracting("titulo").containsExactly("Data", "Tipo", "Valor");
+    }
+
+    @Test
+    void fallback_deveConterCabecalhoFixo() {
+        when(circuitBreakerFactory.create(eq("recentes"))).thenReturn(CB_ABERTO);
+
+        ExtratoFiltrosResponse response = service.buscar(request(Aba.RECENTES));
+
+        var cabecalho = response.data().abas().get("RECENTES").cabecalho();
+        assertThat(cabecalho).hasSize(3);
+        assertThat(cabecalho).extracting("id").containsExactly("data", "tipo", "valor");
+    }
+
+    // ─── Cenários de circuit breaker OPEN ────────────────────────────────────
 
     @Test
     void semAba_circuitBreakerRecentesAberto_deveRetornarAbaRecentesVaziaComErro() {

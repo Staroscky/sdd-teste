@@ -1,6 +1,7 @@
 package com.example.extrato.integration;
 
 import com.github.tomakehurst.wiremock.client.WireMock;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,9 +37,14 @@ class ExtratoFiltrosIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakerRegistry;
+
     @BeforeEach
     void resetWireMock() {
         WireMock.reset();
+        circuitBreakerRegistry.circuitBreaker("recentes").reset();
+        circuitBreakerRegistry.circuitBreaker("futuros").reset();
     }
 
     private static final String RECENTES_BODY = """
@@ -97,8 +103,10 @@ class ExtratoFiltrosIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.ordemAbas[0]").value("RECENTES"))
                 .andExpect(jsonPath("$.data.ordemAbas[1]").value("FUTUROS"))
-                .andExpect(jsonPath("$.data.abas.RECENTES.dados[0].valor").value("R$ 100,00"))
-                .andExpect(jsonPath("$.data.abas.FUTUROS.dados[0].valor").value("R$ 100,00"))
+                .andExpect(jsonPath("$.data.abas.RECENTES.dados[0].valor.titulo").value("- R$ 100,00"))
+                .andExpect(jsonPath("$.data.abas.RECENTES.dados[0].valor.estilo").value("NEGATIVO"))
+                .andExpect(jsonPath("$.data.abas.FUTUROS.dados[0].valor.titulo").value("R$ 100,00"))
+                .andExpect(jsonPath("$.data.abas.FUTUROS.dados[0].valor.estilo").value("POSITIVO"))
                 .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.paginaAtual").value(1))
                 .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.totalRegistros").value(25))
                 .andExpect(jsonPath("$.data.abas.RECENTES.paginacao.tamanhoPagina").value(10))
@@ -137,7 +145,8 @@ class ExtratoFiltrosIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.abas.RECENTES.dados").isEmpty())
                 .andExpect(jsonPath("$.data.abas.RECENTES.filtros").isEmpty())
-                .andExpect(jsonPath("$.data.abas.FUTUROS.dados[0].valor").value("R$ 100,00"))
+                .andExpect(jsonPath("$.data.abas.FUTUROS.dados[0].valor.titulo").value("R$ 100,00"))
+                .andExpect(jsonPath("$.data.abas.FUTUROS.dados[0].valor.estilo").value("POSITIVO"))
                 .andExpect(jsonPath("$.erro.codigo").value("UPSTREAM_PARCIALMENTE_INDISPONIVEL"))
                 .andExpect(jsonPath("$.erro.mensagem").exists());
     }

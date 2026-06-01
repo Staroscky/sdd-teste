@@ -7,7 +7,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AbaResponse(
         List<FiltroResponse> filtros,
-        CabecalhoResponse cabecalho,
+        List<CabecalhoResponse> cabecalho,
         List<LancamentoResponse> dados,
         PaginacaoResponse paginacao
 ) {}

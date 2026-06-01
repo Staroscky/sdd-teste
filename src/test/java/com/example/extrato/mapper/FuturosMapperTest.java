@@ -16,10 +16,10 @@ class FuturosMapperTest {
     private final FuturosMapper mapper = new FuturosMapper(new CurrencyFormatter());
 
     @Test
-    void deveMapearLancamentoFuturoParaResponse() {
+    void deveMapearLancamentoEntradaParaResponse() {
         var lancamento = new LancamentoFuturoUpstream(
                 "lancamentos", "entrada", "Joao Pedro",
-                new BigDecimal("100.00"), "C",
+                new BigDecimal("100.00"), "2026-06-01",
                 new CategoriaUpstream("uuid-2", "Transferencia")
         );
 
@@ -27,28 +27,29 @@ class FuturosMapperTest {
 
         assertThat(result).hasSize(1);
         LancamentoResponse r = result.getFirst();
-        assertThat(r.tipo()).isEqualTo("lancamentos");
-        assertThat(r.acao()).isEqualTo("entrada");
-        assertThat(r.valor()).isEqualTo("R$ 100,00");
-        assertThat(r.lancamento()).isEqualTo("C");
-        assertThat(r.estilo()).isEqualTo("entrada");
-        assertThat(r.categoria().id()).isEqualTo("uuid-2");
+        assertThat(r.acao().tipo()).isEqualTo("DEEPLINK");
+        assertThat(r.data().titulo()).isEqualTo("2026-06-01");
+        assertThat(r.data().estilo()).isEqualTo("NEUTRO");
+        assertThat(r.tipo().titulo()).isEqualTo("Entrada");
+        assertThat(r.tipo().icone().token()).isEqualTo("ids_transferencia");
+        assertThat(r.valor().titulo()).isEqualTo("R$ 100,00");
+        assertThat(r.valor().estilo()).isEqualTo("POSITIVO");
+    }
+
+    @Test
+    void deveMapearLancamentoSaidaComSinalNegativo() {
+        var lancamento = new LancamentoFuturoUpstream(
+                "lancamentos", "saida", "Nome",
+                new BigDecimal("2000.00"), "2026-06-01",
+                new CategoriaUpstream("id", "Cat")
+        );
+        LancamentoResponse r = mapper.toResponseList(List.of(lancamento)).getFirst();
+        assertThat(r.valor().titulo()).isEqualTo("- R$ 2.000,00");
+        assertThat(r.valor().estilo()).isEqualTo("NEGATIVO");
     }
 
     @Test
     void deveRetornarListaVaziaQuandoInputVazio() {
-        List<LancamentoResponse> result = mapper.toResponseList(List.of());
-        assertThat(result).isEmpty();
-    }
-
-    @Test
-    void deveFormatarValorEmBRL() {
-        var lancamento = new LancamentoFuturoUpstream(
-                "lancamentos", "saida", "Nome",
-                new BigDecimal("2000.00"), "D",
-                new CategoriaUpstream("id", "Cat")
-        );
-        List<LancamentoResponse> result = mapper.toResponseList(List.of(lancamento));
-        assertThat(result.getFirst().valor()).isEqualTo("R$ 2.000,00");
+        assertThat(mapper.toResponseList(List.of())).isEmpty();
     }
 }
